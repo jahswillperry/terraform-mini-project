@@ -1,0 +1,70 @@
+                      terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.16"
+    }
+  }
+
+  required_version = ">= 1.2.0"
+}
+
+provider "aws" {
+  region  = "us-east-1"
+#  shared_credentials_files = ["~/.aws/credentials"]
+}
+
+resource "aws_instance" "app_server" {
+  count = 3
+
+  ami           = "ami-0778521d914d23bc1"
+  instance_type = "t2.micro"
+  key_name      = "million"
+
+  tags = {
+    Name = "UbuntuInstance"
+  }
+}
+
+resource "aws_elb" "my_min-lb" {
+  name            = "ubuntu-elb"
+  availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+  listener {
+    instance_port     = 80
+    instance_protocol = "http"
+    lb_port           = 80
+    lb_protocol       = "http"
+  }
+
+    health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    target              = "HTTP:80/"
+    interval            = 30
+  }
+
+  instances = aws_instance.app_server.*.id
+}
+
+resource "aws_route53_record" "example" {
+  zone_id = "Z03680936HJ846TID5TI"
+  name    = "terraform-test"
+  type    = "CNAME"
+  alias {
+    name                   = "${aws_elb.my_min-lb.dns_name}"
+    zone_id               = "${aws_elb.my_min-lb.zone_id}"
+    evaluate_target_health = true
+  }
+}
+
+data "template_file" "host-inventory" {
+  template = "${join("\n", aws_instance.app_server.*.public_ip)}"
+}
+
+output "host-inventory" {
+  value = "${data.template_file.host-inventory.rendered}"
+}
+11:10 PM
+No file chosen
